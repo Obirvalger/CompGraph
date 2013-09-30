@@ -13,29 +13,45 @@ using std::make_tuple;
 // Matrix usage example
 // Also see: matrix.h, matrix.hpp for comments on how filtering works
 
+template<typename T>
 class BoxFilterOp
 {
 public:
+    BoxFilterOp(Matrix<T> &kernel) : ker(kernel) {}
     tuple<uint, uint, uint> operator () (const Image &m) const
     {
+        /*Matrix<int> ker = {{-1, 0, 1},
+                          {-2, 0, 2},
+                          {-1, 0, 1}};
+                          {{1, 1, 1},
+                          {1, 1, 1},
+                          {1, 1, 1}};*/
         uint size = 2 * radius + 1;
-        uint r, g, b, sum_r = 0, sum_g = 0, sum_b = 0;
+        int r, g, b, sum_r = 0, sum_g = 0, sum_b = 0;
+        T elem = 0, div = 0;
         for (uint i = 0; i < size; ++i) {
             for (uint j = 0; j < size; ++j) {
                 // Tie is useful for taking elements from tuple
                 tie(r, g, b) = m(i, j);
-                sum_r += r;
-                sum_g += g;
-                sum_b += b;
+                elem = ker(i,j);
+                div += elem;
+                //cout<<gauss<<div;
+                sum_r += r * elem;
+                sum_g += g * elem;
+                sum_b += b * elem;
             }
         }
-        auto norm = size * size;
-        sum_r /= norm;
-        sum_g /= norm;
-        sum_b /= norm;
+        //auto norm = size * size;
+        //if (div==0)
+        //cout<<div<<endl;
+        div = 1;
+        sum_r /= div;
+        sum_g /= div;
+        sum_b /= div;
         return make_tuple(sum_r, sum_g, sum_b);
     }
     // Radius of neighbourhoud, which is passed to that operator
+    Matrix<T> ker;
     static const int radius = 1;
 };
 
@@ -43,9 +59,16 @@ int main(int argc, char **argv)
 {
     // Image = Matrix<tuple<uint, uint, uint>>
     // tuple is from c++ 11 standard
+    Matrix<double> ker = {{0, 0.5, 0},
+                      {0, 0.5, 0},
+                      {0, -1, 0}};
+                      /*{{1, 2, 1},
+                      {0, 0, 0},
+                      {-1, -2, -1}};*/
     Image img = load_image(argv[1]);
     Image img3;
     img3 = img;
-    Image img2 = img3.unary_map(BoxFilterOp());
+    //Matrix<int> mat(3,3);
+    Image img2 = img3.unary_map(BoxFilterOp<double>(ker));
     save_image(img2, argv[2]);
 }

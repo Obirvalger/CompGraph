@@ -2,9 +2,15 @@
 #include <sstream>
 #include <iostream>
 #include <fstream>
+#include "matrix.h"
+#include "io.h"
 #include <initializer_list>
 #include <limits>
 
+using std::tuple;
+using std::get;
+using std::tie;
+using std::make_tuple;
 using std::string;
 using std::stringstream;
 using std::cout;
@@ -48,7 +54,8 @@ R"(where PARAMS are from list:
     resize image with factor scale. scale is real number > 0
 
 --canny <threshold1> <threshold2>
-    apply Canny filter to image. threshold1 < threshold2 and both in 0..360
+    apply Canny filter to grayscale image. threshold1 < threshold2,
+    both are in 0..360
 
 --custom <kernel_string>
     convolve image with custom kernel, which is given by kernel_string, example:
@@ -97,6 +104,85 @@ Matrix<int> parse_kernel(string kernel)
     return Matrix<int>(0, 0);
 }
 
+class Gauss
+{
+public:
+    Gauss(double s = 1.4, int r = 1) : sigma(s), radius(r) {}
+    tuple<uint, uint, uint> operator () (const Image &m) const
+    {
+        uint size = 2 * radius + 1;
+        double gauss[size][size];
+        uint r, g, b, sum_r = 0, sum_g = 0, sum_b = 0;
+        double div = 0;
+        for (uint i = 0; i < size; ++i) {
+            for (uint j = 0; j < size; ++j) {
+                gauss[i][j] = (1/(M_PI*2)*sigma)*exp((i*i+j*j)/(2*sigma*sigma)*(-1.0));
+                div += gauss[i][j];
+            }
+        }
+        for (uint i = 0; i < size; ++i) {
+            for (uint j = 0; j < size; ++j) {
+                // Tie is useful for taking elements from tuple
+                tie(r, g, b) = m(i, j);
+                sum_r += r * gauss[i][j]/div;
+                sum_g += g * gauss[i][j]/div;
+                sum_b += b * gauss[i][j]/div;
+            }
+        }
+        return make_tuple(sum_r, sum_g, sum_b);
+    }
+    // Radius of neighbourhoud, which is passed to that operator
+    double sigma;
+    int radius;
+};
+
+Image gaussian(const Image &src_image,double sigma = 1.4, uint radius = 1)
+{
+    return src_image.unary_map(Gauss(sigma,radius));
+}
+
+template<typename T>
+class Custom
+{
+public:
+    Custom(Matrix<T> &kernel) : ker(kernel), radius(ker.n_rows) {}
+    tuple<uint, uint, uint> operator () (const Image &m) const
+    {
+        /*Matrix<int> ker = {{-1, 0, 1},
+                          {-2, 0, 2},
+                          {-1, 0, 1}};
+                          {{1, 1, 1},
+                          {1, 1, 1},
+                          {1, 1, 1}};*/
+        uint size = 2 * radius + 1;
+        int r, g, b, sum_r = 0, sum_g = 0, sum_b = 0;
+        int elem = 0, div = 0;
+        for (uint i = 0; i < size; ++i) {
+            for (uint j = 0; j < size; ++j) {
+                // Tie is useful for taking elements from tuple
+                tie(r, g, b) = m(i, j);
+                elem = ker(i,j);
+                div += elem;
+                //cout<<gauss<<div;
+                sum_r += r * elem;
+                sum_g += g * elem;
+                sum_b += b * elem;
+            }
+        }
+        //auto norm = size * size;
+        if (div==0)
+        div = 1;
+        sum_r /= div;
+        sum_g /= div;
+        sum_b /= div;
+        return make_tuple(sum_r, sum_g, sum_b);
+    }
+    // Radius of neighbourhoud, which is passed to that operator
+    Matrix<T> ker;
+    int radius;
+};
+
+
 int main(int argc, char **argv)
 {
     try {
@@ -125,8 +211,7 @@ int main(int argc, char **argv)
             // dst_image = gray_world(src_image);
         } else if (action == "--resize") {
             check_argc(argc, 5, 5);
-            double scale = read_value<double>(argv[4]);
-            cout<<scale;
+            //double scale = read_value<double>(argv[4]);
             // dst_image = resize(src_image, scale);
         }  else if (action == "--custom") {
             check_argc(argc, 5, 5);
@@ -160,7 +245,7 @@ int main(int argc, char **argv)
                 check_number("radius", radius, 1);
             }
             if (action == "--gaussian") {
-                // dst_image = gaussian(src_image, sigma, radius);
+                dst_image = gaussian(src_image, sigma, radius);
             } else {
                 // dst_image = gaussian_separable(src_image, sigma, radius);
             }
@@ -175,20 +260,24 @@ int main(int argc, char **argv)
             // dst_image = canny(src_image, threshold1, threshold2);
         } else if (action == "--align") {
             check_argc(argc, 4, 6);
-            string postprocessing(argv[4]);
-            if (postprocessing == "--gray-world" ||
-                postprocessing == "--unsharp") {
-                check_argc(argc, 5, 5);
-                // dst_image = align(src_image, postprocessing);
-            } else if (postprocessing == "--autocontrast") {
-                double fraction = 0.0;
-                if (argc == 6) {
-                    fraction = read_value<double>(argv[5]);
-                    check_number("fraction", fraction, 0.0, 0.4);
+            if (argc == 5) {
+                string postprocessing(argv[4]);
+                if (postprocessing == "--gray-world" ||
+                    postprocessing == "--unsharp") {
+                    check_argc(argc, 5, 5);
+                    // dst_image = align(src_image, postprocessing);
+                } else if (postprocessing == "--autocontrast") {
+                    double fraction = 0.0;
+                    if (argc == 6) {
+                        fraction = read_value<double>(argv[5]);
+                        check_number("fraction", fraction, 0.0, 0.4);
+                    }
+                    // dst_image = align(src_image, postprocessing, fraction);
+                } else {
+                    throw string("unknown align option ") + postprocessing;
                 }
-                // dst_image = align(src_image, postprocessing, fraction);
             } else {
-                throw string("unknown align option ") + postprocessing;
+                // dst_image = align(src_image);
             }
         } else {
             throw string("unknown action ") + action;

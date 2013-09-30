@@ -167,8 +167,8 @@ const Matrix<ValueT> Matrix<ValueT>::submatrix(uint prow, uint pcol,
     Matrix<ValueT> tmp(*this);
     make_rw(tmp.n_rows) = rows;
     make_rw(tmp.n_cols) = cols;
-    make_rw(tmp.pin_row) = prow;
-    make_rw(tmp.pin_col) = pcol;
+    make_rw(tmp.pin_row) = pin_row + prow;
+    make_rw(tmp.pin_col) = pin_col + pcol;
     return tmp;
 }
 
