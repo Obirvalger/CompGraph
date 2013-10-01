@@ -104,7 +104,7 @@ Matrix<int> parse_kernel(string kernel)
     return Matrix<int>(0, 0);
 }
 
-class Gauss
+/*class Gauss
 {
 public:
     Gauss(double s = 1.4, int r = 1) : sigma(s), radius(r) {}
@@ -134,18 +134,13 @@ public:
     // Radius of neighbourhoud, which is passed to that operator
     double sigma;
     int radius;
-};
-
-Image gaussian(const Image &src_image,double sigma = 1.4, uint radius = 1)
-{
-    return src_image.unary_map(Gauss(sigma,radius));
-}
+};*/
 
 template<typename T>
 class Custom
 {
 public:
-    Custom(Matrix<T> &kernel) : ker(kernel), radius(ker.n_rows) {}
+    Custom(Matrix<T> &kernel) : ker(kernel), radius((ker.n_cols - 1) / 2) {}
     tuple<uint, uint, uint> operator () (const Image &m) const
     {
         /*Matrix<int> ker = {{-1, 0, 1},
@@ -156,13 +151,13 @@ public:
                           {1, 1, 1}};*/
         uint size = 2 * radius + 1;
         int r, g, b, sum_r = 0, sum_g = 0, sum_b = 0;
-        int elem = 0, div = 0;
+        T elem = 0;//, div = 0;
         for (uint i = 0; i < size; ++i) {
             for (uint j = 0; j < size; ++j) {
                 // Tie is useful for taking elements from tuple
                 tie(r, g, b) = m(i, j);
                 elem = ker(i,j);
-                div += elem;
+                //div += elem;
                 //cout<<gauss<<div;
                 sum_r += r * elem;
                 sum_g += g * elem;
@@ -170,11 +165,11 @@ public:
             }
         }
         //auto norm = size * size;
-        if (div==0)
+        /*if ((div < 1e-5) && (div > -1e-5))
         div = 1;
         sum_r /= div;
         sum_g /= div;
-        sum_b /= div;
+        sum_b /= div;*/
         return make_tuple(sum_r, sum_g, sum_b);
     }
     // Radius of neighbourhoud, which is passed to that operator
@@ -182,6 +177,107 @@ public:
     int radius;
 };
 
+class Separ_x
+{
+public:
+    Separ_x(Matrix<double> &kernel) : ker(kernel), radius((ker.n_cols - 1) / 2) {}
+    tuple<uint, uint, uint> operator () (const Image &m) const
+    {
+        uint size = 2 * radius + 1;
+        int r, g, b, sum_r = 0, sum_g = 0, sum_b = 0;
+        double elem = 0;
+        for (uint i = 0; i < size; ++i) {
+            // Tie is useful for taking elements from tuple
+            tie(r, g, b) = m(radius, i);
+            elem = ker(radius,i);
+            sum_r += r * elem;
+            sum_g += g * elem;
+            sum_b += b * elem;
+        }
+        return make_tuple(sum_r, sum_g, sum_b);
+    }
+    // Radius of neighbourhoud, which is passed to that operator
+    Matrix<double> ker;
+    int radius;
+};
+
+class Separ_y
+{
+public:
+    Separ_y(Matrix<double> &kernel) : ker(kernel), radius((ker.n_cols - 1) / 2) {}
+    tuple<uint, uint, uint> operator () (const Image &m) const
+    {
+        uint size = 2 * radius + 1;
+        int r, g, b, sum_r = 0, sum_g = 0, sum_b = 0;
+        double elem = 0;
+        for (uint i = 0; i < size; ++i) {
+            // Tie is useful for taking elements from tuple
+            tie(r, g, b) = m(i, radius);
+            elem = ker(i,radius);
+            sum_r += r * elem;
+            sum_g += g * elem;
+            sum_b += b * elem;
+        }
+        return make_tuple(sum_r, sum_g, sum_b);
+    }
+    // Radius of neighbourhoud, which is passed to that operator
+    Matrix<double> ker;
+    int radius;
+};
+
+Image gaussian(const Image &src_image, double sigma = 1.4, uint radius = 1)
+{
+    uint size = 2 * radius + 1;
+    Matrix<double> kernel(size, size);
+    double div = 0;
+    for (uint i = 0; i < size; ++i) {
+        for (uint j = 0; j < size; ++j) {
+            kernel(i,j) = 1/((M_PI*2)*sigma*sigma)*exp((i*i+j*j)/(2*sigma*sigma)*(-1.0));
+            div += kernel(i,j);
+        }
+    }
+    for (uint i = 0; i < size; ++i) {
+        for (uint j = 0; j < size; ++j) {
+            kernel(i,j) /= div;
+        }
+    }
+    return src_image.unary_map(Custom<double>(kernel));
+}
+
+Image gaussian_separable(const Image &src_image, double sigma = 1.4, uint radius = 1)
+{
+    uint size = 2 * radius + 1;
+    Matrix<double> kernel_x(size, size), kernel_y(size, size);
+    double div = 0;
+    for (uint j = 0; j < size; ++j) {
+        kernel_y(j,radius) = 1/(sqrt(M_PI*2)*sigma)*exp((j*j)/(2*sigma*sigma)*(-1.0));
+        kernel_x(radius,j) = 1/(sqrt(M_PI*2)*sigma)*exp((j*j)/(2*sigma*sigma)*(-1.0));
+        div += kernel_y(j,radius);
+    }
+    for (uint i = 0; i < size; ++i) {
+        kernel_y(i,radius) /= div;
+        kernel_x(radius,i) /= div;
+    }
+    //cout<<gauss.n_cols<<endl;
+    return src_image.unary_map(Separ_x(kernel_x)).unary_map(Separ_y(kernel_y));
+    //return src_image.unary_map(Separ_x(kernel_x));
+}
+
+Image sobel_x(const Image &src_image, double sigma = 1.4, uint radius = 1)
+{
+    Matrix<double> kernel = {{-1, 0, 1},
+                            {-2, 0, 2},
+                            {-1, 0, 1}};
+    return src_image.unary_map(Custom<double>(kernel));
+}
+
+Image sobel_y(const Image &src_image, double sigma = 1.4, uint radius = 1)
+{
+    Matrix<double> kernel = {{1, 2, 1},
+                            {0, 0, 0},
+                            {-1, -2, -1}};
+    return src_image.unary_map(Custom<double>(kernel));
+}
 
 int main(int argc, char **argv)
 {
@@ -199,10 +295,10 @@ int main(int argc, char **argv)
 
         if (action == "--sobel-x") {
             check_argc(argc, 4, 4);
-            // dst_image = sobel_x(src_image);
+            dst_image = sobel_x(src_image);
         } else if (action == "--sobel-y") {
             check_argc(argc, 4, 4);
-            // dst_image = sobel_y(src_image);
+            dst_image = sobel_y(src_image);
         } else if (action == "--unsharp") {
             check_argc(argc, 4, 4);
             // dst_image = unsharp(src_image);
@@ -247,7 +343,7 @@ int main(int argc, char **argv)
             if (action == "--gaussian") {
                 dst_image = gaussian(src_image, sigma, radius);
             } else {
-                // dst_image = gaussian_separable(src_image, sigma, radius);
+                dst_image = gaussian_separable(src_image, sigma, radius);
             }
         } else if (action == "--canny") {
             check_argc(6, 6);
