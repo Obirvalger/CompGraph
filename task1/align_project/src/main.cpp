@@ -279,6 +279,29 @@ Image sobel_y(const Image &src_image, double sigma = 1.4, uint radius = 1)
     return src_image.unary_map(Custom<double>(kernel));
 }
 
+Image canny(const Image &m)
+{
+    Matrix<double> sobelx = {{-1, 0, 1},
+                            {-2, 0, 2},
+                            {-1, 0, 1}};
+    Matrix<double> sobely = {{1, 2, 1},
+                            {0, 0, 0},
+                            {-1, -2, -1}};
+    Image imgx = m.unary_map(Custom<double>(sobelx)),
+        imgy = m.unary_map(Custom<double>(sobely));
+    Matrix<int> grad(m.n_rows, m.n_cols);
+    Matrix<double> theta(m.n_rows, m.n_cols);
+    unsigned int rx, ry;
+    for (uint i = 0; i < m.n_rows; ++i) {
+        for (uint j = 0; j < m.n_cols; ++j) {
+            tie(rx,rx,rx) = imgx(i,j); tie(ry,ry,ry) = imgy(i,j);
+            grad(i,j) = sqrt(rx*rx+ry*ry);
+            theta(i,j) = atan2(rx, ry);
+        }
+    }
+    return m;
+}
+
 int main(int argc, char **argv)
 {
     try {
@@ -347,13 +370,13 @@ int main(int argc, char **argv)
             }
         } else if (action == "--canny") {
             check_argc(6, 6);
-            int threshold1 = read_value<int>(argv[4]);
+            /*int threshold1 = read_value<int>(argv[4]);
             check_number("threshold1", threshold1, 0, 360);
             int threshold2 = read_value<int>(argv[5]);
             check_number("threshold2", threshold2, 0, 360);
             if (threshold1 >= threshold2)
-                throw string("threshold1 must be less than threshold2");
-            // dst_image = canny(src_image, threshold1, threshold2);
+                throw string("threshold1 must be less than threshold2");*/
+             dst_image = canny(src_image);//, threshold1, threshold2);
         } else if (action == "--align") {
             check_argc(argc, 4, 6);
             if (argc == 5) {
