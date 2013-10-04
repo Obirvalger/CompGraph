@@ -68,6 +68,27 @@ R"(where PARAMS are from list:
     cout << usage;
 }
 
+/*approximately equal function*/
+bool aeq(double x, double y, double eps = 1e-5)
+{
+    if (abs(x - y) < eps)  return true;
+    return false;
+}
+
+/*convert radian to neighbourhoud place*/
+int radtoplace(double rad)
+{
+    if (aeq(rad,0)) return 1;
+    if (aeq(rad,M_PI/4)) return 2;
+    if (aeq(rad,M_PI/2)) return 3;
+    if (aeq(rad,M_PI*3/4)) return 4;
+    if (aeq(rad,M_PI) || (aeq(rad,-M_PI))) return 5;
+    if (aeq(rad,-M_PI*3/4)) return 6;
+    if (aeq(rad,-M_PI/2)) return 7;
+    if (aeq(rad,-M_PI/4)) return 8;
+    return 0;
+}
+
 template<typename ValueType>
 ValueType read_value(string s)
 {
@@ -140,7 +161,7 @@ template<typename T>
 class Custom
 {
 public:
-    Custom(Matrix<T> &kernel) : ker(kernel), radius((ker.n_cols - 1) / 2) {}
+    Custom(Matrix<T> &kernel, bool saveimg = true) : ker(kernel), radius((ker.n_cols - 1) / 2), save(saveimg) {}
     tuple<uint, uint, uint> operator () (const Image &m) const
     {
         /*Matrix<int> ker = {{-1, 0, 1},
@@ -151,30 +172,31 @@ public:
                           {1, 1, 1}};*/
         uint size = 2 * radius + 1;
         int r, g, b, sum_r = 0, sum_g = 0, sum_b = 0;
-        T elem = 0;//, div = 0;
+        T elem = 0;
         for (uint i = 0; i < size; ++i) {
             for (uint j = 0; j < size; ++j) {
                 // Tie is useful for taking elements from tuple
                 tie(r, g, b) = m(i, j);
                 elem = ker(i,j);
-                //div += elem;
-                //cout<<gauss<<div;
                 sum_r += r * elem;
                 sum_g += g * elem;
                 sum_b += b * elem;
             }
         }
-        //auto norm = size * size;
-        /*if ((div < 1e-5) && (div > -1e-5))
-        div = 1;
-        sum_r /= div;
-        sum_g /= div;
-        sum_b /= div;*/
+        if (save) {
+            if (sum_r < 0) sum_r = 0;
+            if (sum_r > 255) sum_r = 255;
+            if (sum_g < 0) sum_g = 0;
+            if (sum_g > 255) sum_g = 255;
+            if (sum_b < 0) sum_b = 0;
+            if (sum_b > 255) sum_b = 255;
+        }
         return make_tuple(sum_r, sum_g, sum_b);
     }
     // Radius of neighbourhoud, which is passed to that operator
     Matrix<T> ker;
     int radius;
+    bool save;
 };
 
 class Separ_x
@@ -263,23 +285,83 @@ Image gaussian_separable(const Image &src_image, double sigma = 1.4, uint radius
     //return src_image.unary_map(Separ_x(kernel_x));
 }
 
-Image sobel_x(const Image &src_image, double sigma = 1.4, uint radius = 1)
+Image sobel_x(const Image &src_image, bool save = true)
 {
-    Matrix<double> kernel = {{-1, 0, 1},
+    Matrix<int> kernel = {{-1, 0, 1},
                             {-2, 0, 2},
                             {-1, 0, 1}};
-    return src_image.unary_map(Custom<double>(kernel));
+    return src_image.unary_map(Custom<int>(kernel, save));
 }
 
-Image sobel_y(const Image &src_image, double sigma = 1.4, uint radius = 1)
+Image sobel_y(const Image &src_image, bool save = true)
 {
-    Matrix<double> kernel = {{1, 2, 1},
+    Matrix<int> kernel = {{1, 2, 1},
                             {0, 0, 0},
                             {-1, -2, -1}};
-    return src_image.unary_map(Custom<double>(kernel));
+    return src_image.unary_map(Custom<int>(kernel, save));
 }
 
-Image canny(const Image &m)
+Image gray_world(const Image &src_image, bool save = true)
+{
+    int r, g, b;
+    double s = 0, sr = 0, sg = 0, sb = 0;
+    uint sizei = src_image.n_rows, sizej = src_image.n_cols;
+    Image img(src_image.n_rows, src_image.n_cols);
+    for (uint i = 0; i < sizei; ++i) {
+        for (uint j = 0; j < sizej; ++j) {
+            // Tie is useful for taking elements from tuple
+            tie(r, g, b) = src_image(i, j);
+            sr += r;
+            sg += g;
+            sb += b;
+        }
+    }
+    sr /= sizei * sizej;
+    sg /= sizei * sizej;
+    sb /= sizei * sizej;
+    s = (sr + sg + sb) / 3;
+    for (uint i = 0; i < sizei; ++i) {
+        for (uint j = 0; j < sizej; ++j) {
+            tie(r, g, b) = src_image(i, j);
+            r *= s / sr;
+            g *= s / sg;
+            b *= s / sb;
+            if (save) {
+                //if (sum_r < 0) sum_r = 0;
+                if (r > 255) r = 255;
+                //if (sum_g < 0) sum_g = 0;
+                if (g > 255) g = 255;
+                //if (sum_b < 0) sum_b = 0;
+                if (b > 255) b = 255;
+            }
+            img(i,j) = make_tuple(r, g, b);
+        }
+    }
+    return img;
+}
+
+Image unsharp(const Image &src_image, bool save = true)
+{
+    Matrix<double> kernel = {{-1/6, -2/3, -1/6},
+                            {-2/3, 13/3, -2/3},
+                            {-1/6, -2/3, -1/6}};
+    return src_image.unary_map(Custom<double>(kernel, save));
+}
+
+/*Image aligng(const Image &src_image, string postprocessing, double fraction = 0, bool save = true)
+{
+    switch (postprocessing) {
+        case "--gray-world":
+            return gray_world(src_image);
+        case "--unsharp"
+            return unsharp(src_image);
+        case "--autocontrast"
+            return ;
+        default: return src_image;
+    }
+}*/
+
+Image canny(const Image &m, int th1, int th2)
 {
     Matrix<double> sobelx = {{-1, 0, 1},
                             {-2, 0, 2},
@@ -289,9 +371,10 @@ Image canny(const Image &m)
                             {-1, -2, -1}};
     Image imgx = m.unary_map(Custom<double>(sobelx)),
         imgy = m.unary_map(Custom<double>(sobely));
-    Matrix<int> grad(m.n_rows, m.n_cols);
+    Matrix<int> grad(m.n_rows, m.n_cols), bordmap(m.n_rows, m.n_cols);
     Matrix<double> theta(m.n_rows, m.n_cols);
     unsigned int rx, ry;
+
     for (uint i = 0; i < m.n_rows; ++i) {
         for (uint j = 0; j < m.n_cols; ++j) {
             tie(rx,rx,rx) = imgx(i,j); tie(ry,ry,ry) = imgy(i,j);
@@ -299,6 +382,55 @@ Image canny(const Image &m)
             theta(i,j) = atan2(rx, ry);
         }
     }
+    for (uint i = 0; i < m.n_rows; ++i) {
+        for (uint j = 0; j < m.n_cols; ++j) {
+            switch (radtoplace(theta(i,j))) {
+                case 1:
+                    if ((grad(i,j) <=  grad(i,j + 1)) || (grad(i,j) <= grad(i,j - 1)) || (grad(i,j) < th1))
+                        grad(i,j) = 0;
+                    if (grad(i,j) > th2)
+                        bordmap(i,j) = 1;
+                case 2:
+                    if ((grad(i,j) <=  grad(i + 1,j + 1)) || (grad(i,j) <= grad(i - 1,j - 1)) || (grad(i,j) < th1))
+                        grad(i,j) = 0;
+                    if (grad(i,j) > th2)
+                        bordmap(i,j) = 1;
+                case 3:
+                    if ((grad(i,j) <=  grad(i + 1,j)) || (grad(i,j) <= grad(i - 1,j)) || (grad(i,j) < th1))
+                        grad(i,j) = 0;
+                    if (grad(i,j) > th2)
+                        bordmap(i,j) = 1;
+                case 4:
+                    if ((grad(i,j) <=  grad(i + 1,j + 1)) || (grad(i,j) <= grad(i - 1,j - 1)) || (grad(i,j) < th1))
+                        grad(i,j) = 0;
+                    if (grad(i,j) > th2)
+                        bordmap(i,j) = 1;
+                case 5:
+                    if ((grad(i,j) <=  grad(i,j - 1)) || (grad(i,j) <= grad(i,j + 1)) || (grad(i,j) < th1))
+                        grad(i,j) = 0;
+                    if (grad(i,j) > th2)
+                        bordmap(i,j) = 1;
+                case 6:
+                    if ((grad(i,j) <=  grad(i - 1,j - 1)) || (grad(i,j) <= grad(i + 1,j + 1)) || (grad(i,j) < th1))
+                        grad(i,j) = 0;
+                    if (grad(i,j) > th2)
+                        bordmap(i,j) = 1;
+                case 7:
+                    if ((grad(i,j) <=  grad(i - 1,j)) || (grad(i,j) <= grad(i + 1,j)) || (grad(i,j) < th1))
+                        grad(i,j) = 0;
+                    if (grad(i,j) > th2)
+                        bordmap(i,j) = 1;
+                case 8:
+                    if ((grad(i,j) <=  grad(i - 1,j + 1)) || (grad(i,j) <= grad(i + 1,j - 1)) || (grad(i,j) < th1))
+                        grad(i,j) = 0;
+                    if (grad(i,j) > th2)
+                        bordmap(i,j) = 1;
+                default: ;
+            }
+        }
+    }
+
+
     return m;
 }
 
@@ -324,10 +456,10 @@ int main(int argc, char **argv)
             dst_image = sobel_y(src_image);
         } else if (action == "--unsharp") {
             check_argc(argc, 4, 4);
-            // dst_image = unsharp(src_image);
+            dst_image = unsharp(src_image);
         } else if (action == "--gray-world") {
             check_argc(argc, 4, 4);
-            // dst_image = gray_world(src_image);
+            dst_image = gray_world(src_image);
         } else if (action == "--resize") {
             check_argc(argc, 5, 5);
             //double scale = read_value<double>(argv[4]);
@@ -370,13 +502,13 @@ int main(int argc, char **argv)
             }
         } else if (action == "--canny") {
             check_argc(6, 6);
-            /*int threshold1 = read_value<int>(argv[4]);
+            int threshold1 = read_value<int>(argv[4]);
             check_number("threshold1", threshold1, 0, 360);
             int threshold2 = read_value<int>(argv[5]);
             check_number("threshold2", threshold2, 0, 360);
             if (threshold1 >= threshold2)
-                throw string("threshold1 must be less than threshold2");*/
-             dst_image = canny(src_image);//, threshold1, threshold2);
+                throw string("threshold1 must be less than threshold2");
+             dst_image = canny(src_image, threshold1, threshold2);
         } else if (action == "--align") {
             check_argc(argc, 4, 6);
             if (argc == 5) {
@@ -384,7 +516,7 @@ int main(int argc, char **argv)
                 if (postprocessing == "--gray-world" ||
                     postprocessing == "--unsharp") {
                     check_argc(argc, 5, 5);
-                    // dst_image = align(src_image, postprocessing);
+                    //dst_image = align(src_image, postprocessing);
                 } else if (postprocessing == "--autocontrast") {
                     double fraction = 0.0;
                     if (argc == 6) {
