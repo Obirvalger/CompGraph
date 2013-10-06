@@ -8,6 +8,9 @@
 #include <limits>
 
 using std::tuple;
+using std::vector;
+using std::min;
+using std::max;
 using std::get;
 using std::tie;
 using std::make_tuple;
@@ -348,9 +351,460 @@ Image unsharp(const Image &src_image, bool save = true)
     return src_image.unary_map(Custom<double>(kernel, save));
 }
 
-/*Image aligng(const Image &src_image, string postprocessing, double fraction = 0, bool save = true)
+Image canny(const Image &src_image, int th1, int th2)
 {
-    switch (postprocessing) {
+    Image m = gaussian(src_image,1.4,2);
+    Image imgx = sobel_x(m,false),//m.unary_map(Custom<double>(sobelx)),
+        imgy = sobel_y(m,false);//m.unary_map(Custom<double>(sobely));
+    vector<vector<int>> bord;
+    vector<int> elem(2);
+    Matrix<int> bordmap(m.n_rows, m.n_cols);
+    Matrix<double> grad(m.n_rows, m.n_cols), theta(m.n_rows, m.n_cols);
+    unsigned int rx, ry, nr = m.n_rows, nc = m.n_cols, top, bottom, left, right;
+
+    //find gradient
+    for (uint i = 0; i < nr; ++i) {
+        for (uint j = 0; j < nc; ++j) {
+            tie(rx,rx,rx) = imgx(i,j); tie(ry,ry,ry) = imgy(i,j);
+            grad(i,j) = sqrt(rx*rx+ry*ry);
+            theta(i,j) = atan2(rx, ry);
+        }
+    }
+
+    //border map making with great pixels
+    for (uint i = 1; i < nr - 1; ++i) {
+        for (uint j = 1; j < nc - 1; ++j) {
+            switch (radtoplace(theta(i,j))) {
+                case 1:
+                    if ((grad(i,j) <=  grad(i,j + 1)) || (grad(i,j) <= grad(i,j - 1)) || (grad(i,j) < th1))
+                        grad(i,j) = 0; else
+                    if (grad(i,j) > th2) {
+                        bordmap(i,j) = 1;
+                        elem[0] = i;
+                        elem[1] = j;
+                        bord.push_back(elem);
+                    } else bordmap(i,j) = -1;
+
+                case 2:
+                    if ((grad(i,j) <=  grad(i + 1,j + 1)) || (grad(i,j) <= grad(i - 1,j - 1)) || (grad(i,j) < th1))
+                        grad(i,j) = 0; else
+                    if (grad(i,j) > th2) {
+                        bordmap(i,j) = 1;
+                        elem[0] = i;
+                        elem[1] = j;
+                        bord.push_back(elem);
+                    } else bordmap(i,j) = -1;
+                case 3:
+                    if ((grad(i,j) <=  grad(i + 1,j)) || (grad(i,j) <= grad(i - 1,j)) || (grad(i,j) < th1))
+                        grad(i,j) = 0; else
+                    if (grad(i,j) > th2) {
+                        bordmap(i,j) = 1;
+                        elem[0] = i;
+                        elem[1] = j;
+                        bord.push_back(elem);
+                    } else bordmap(i,j) = -1;
+                case 4:
+                    if ((grad(i,j) <=  grad(i + 1,j + 1)) || (grad(i,j) <= grad(i - 1,j - 1)) || (grad(i,j) < th1))
+                        grad(i,j) = 0; else
+                    if (grad(i,j) > th2) {
+                        bordmap(i,j) = 1;
+                        elem[0] = i;
+                        elem[1] = j;
+                        bord.push_back(elem);
+                    } else bordmap(i,j) = -1;
+                case 5:
+                    if ((grad(i,j) <=  grad(i,j - 1)) || (grad(i,j) <= grad(i,j + 1)) || (grad(i,j) < th1))
+                        grad(i,j) = 0; else
+                    if (grad(i,j) > th2) {
+                        bordmap(i,j) = 1;
+                        elem[0] = i;
+                        elem[1] = j;
+                        bord.push_back(elem);
+                    } else bordmap(i,j) = -1;
+                case 6:
+                    if ((grad(i,j) <=  grad(i - 1,j - 1)) || (grad(i,j) <= grad(i + 1,j + 1)) || (grad(i,j) < th1))
+                        grad(i,j) = 0; else
+                    if (grad(i,j) > th2) {
+                        bordmap(i,j) = 1;
+                        elem[0] = i;
+                        elem[1] = j;
+                        bord.push_back(elem);
+                    } else bordmap(i,j) = -1;
+                case 7:
+                    if ((grad(i,j) <=  grad(i - 1,j)) || (grad(i,j) <= grad(i + 1,j)) || (grad(i,j) < th1))
+                        grad(i,j) = 0; else
+                    if (grad(i,j) > th2) {
+                        bordmap(i,j) = 1;
+                        elem[0] = i;
+                        elem[1] = j;
+                        bord.push_back(elem);
+                    } else bordmap(i,j) = -1;
+                case 8:
+                    if ((grad(i,j) <=  grad(i - 1,j + 1)) || (grad(i,j) <= grad(i + 1,j - 1)) || (grad(i,j) < th1))
+                        grad(i,j) = 0; else
+                    if (grad(i,j) > th2) {
+                        bordmap(i,j) = 1;
+                        elem[0] = i;
+                        elem[1] = j;
+                        bord.push_back(elem);
+                    } else bordmap(i,j) = -1;
+                default: ;
+            }
+        }
+    }
+
+    //border map making with middle pixels
+    for(uint k = 0; k < nr * nc; ++k) {
+        uint i, j;
+        if (k == bord.size()) break;
+        i = bord[k][0]; j = bord[k][1];
+        if ((j != nc) && (bordmap(i,j + 1) == -1)) {
+            bordmap(i,j + 1) = 1;
+            elem[0] = i;
+            elem[1] = j + 1;
+            bord.push_back(elem);
+        }
+        if ((j != nc) && (i != nr) && (bordmap(i + 1,j + 1) == -1)) {
+            bordmap(i + 1,j + 1) = 1;
+            elem[0] = i + 1;
+            elem[1] = j + 1;
+            bord.push_back(elem);
+        }
+        if ((i != 0) && (bordmap(i - 1,j) == -1)) {
+            bordmap(i - 1,j) = 1;
+            elem[0] = i - 1;
+            elem[1] = j;
+            bord.push_back(elem);
+        }
+        if ((i != 0)  && (j != 0) && (bordmap(i - 1,j - 1) == -1)) {
+            bordmap(i - 1,j - 1) = 1;
+            elem[0] = i - 1;
+            elem[1] = j - 1;
+            bord.push_back(elem);
+        }
+        if ((j != 0) && (bordmap(i,j - 1) == -1)) {
+            bordmap(i,j - 1) = 1;
+            elem[0] = i;
+            elem[1] = j - 1;
+            bord.push_back(elem);
+        }
+        if ((j != 0) && (i != nr) && (bordmap(i + 1,j - 1) == -1)) {
+            bordmap(i + 1,j - 1) = 1;
+            elem[0] = i + 1;
+            elem[1] = j - 1;
+            bord.push_back(elem);
+        }
+        if ((i != nr) && (bordmap(i + 1,j) == -1)) {
+            bordmap(i + 1,j) = 1;
+            elem[0] = i + 1;
+            elem[1] = j;
+            bord.push_back(elem);
+        }
+        if ((j != nc) && (i != nr) && (bordmap(i + 1,j + 1) == -1)) {
+            bordmap(i + 1,j + 1) = 1;
+            elem[0] = i + 1;
+            elem[1] = j + 1;
+            bord.push_back(elem);
+        }
+    }
+    for (uint i = 0; i < nr; ++i) {
+        for (uint j = 0; j < nc; ++j) {
+            if(bordmap(i,j) == -1)
+                bordmap(i,j) = 0;
+        }
+    }
+
+    /*for (uint i = 0; i < nr; ++i) {
+        for (uint j = 0; j < nc; ++j) {
+            imgx(i,j) = make_tuple(bordmap(i,j) * 255, bordmap(i,j) * 255, bordmap(i,j) * 255);
+        }
+    }*/
+
+    //cutting borders
+    uint sum = 0, mx = 0, curpos = 0;
+    for (uint i = 0; i < nr / 100 * 5; ++i) {
+        for (uint j = 0; j < nc; ++j) {
+            sum += bordmap(i,j);
+        }
+        if (sum > mx) {
+            mx = sum;
+            curpos = i + 2;
+        }
+    }
+    sum = mx = 0;
+    for (uint i = curpos; i < nr / 100 * 5; ++i) {
+        for (uint j = 0; j < nc; ++j) {
+            sum += bordmap(i,j);
+        }
+        if (sum > mx) {
+            mx = sum;
+            curpos = i;
+        }
+    }
+    top = curpos;
+
+    sum = mx = 0;
+    curpos = 0;
+    for (uint j = nc; j < nc / 100 * 5; ++j) {
+        for (uint i = 0; i < nr; ++i) {
+            sum += bordmap(i,j);
+        }
+        if (sum > mx) {
+            mx = sum;
+            curpos = j + 2;
+        }
+    }
+    sum = mx = 0;
+    for (uint j = curpos; j < nc / 100 * 5; ++j) {
+        for (uint i = 0; i < nr; ++i) {
+            sum += bordmap(i,j);
+        }
+        if (sum > mx) {
+            mx = sum;
+            curpos = j;
+        }
+    }
+    left = curpos;
+
+    sum = mx = 0;
+    curpos = nr - 1;
+    for (uint i = nr - 1; i >= nr / 100 * 95; --i) {
+        for (uint j = 0; j < nc; ++j) {
+            sum += bordmap(i,j);
+        }
+        if (sum > mx) {
+            mx = sum;
+            curpos = i + 2;
+        }
+    }
+    sum = mx = 0;
+    for (uint i = curpos; i >= nr / 100 * 95; --i) {
+        for (uint j = 0; j < nc; ++j) {
+            sum += bordmap(i,j);
+        }
+        if (sum > mx) {
+            mx = sum;
+            curpos = i;
+        }
+    }
+    bottom = curpos;
+
+    sum = mx = 0;
+    curpos = nc - 1;
+    for (uint j = nc - 1; j >= nc / 100 * 95; --j) {
+        for (uint i = 0; i < nr; ++i) {
+            sum += bordmap(i,j);
+        }
+        if (sum > mx) {
+            mx = sum;
+            curpos = j + 2;
+        }
+    }
+    sum = mx = 0;
+    for (uint j = curpos; j > nc / 100 * 95; --j) {
+        for (uint i = 0; i < nr; ++i) {
+            sum += bordmap(i,j);
+        }
+        if (sum > mx) {
+            mx = sum;
+            curpos = j;
+        }
+    }
+    right = curpos;
+
+    //making cutted image
+    Image img(bottom - top, right - left);
+    for (uint i = top + 1; i < bottom; ++i) {
+        for (uint j = left + 1; j < right; ++j) {
+            img(i - top - 1,j - left - 1) = src_image(i,j);
+        }
+    }
+    return img;
+}
+
+int mse(Image img1, Image img2, int lim = 15)
+{
+    int ans, a1 = 0, a2 = 0;
+    uint nr = img1.n_rows, nc = img1.n_cols, val = 0, mv1 = 0, mv2 = 0, r1,r2;
+    for (int k = 0; k <= lim; ++k) {
+        for (uint i = 0; i < nr - k; ++i) {
+            for (uint j = 0; j < nc; ++j) {
+            tie(r1,r1,r1) = img1(i,j);
+            tie(r2,r2,r2) = img2(i + k,j);
+            val += (r1 - r2) * (r1 - r2);
+            }
+        }
+        if (k == 0) mv1 = val;
+        if (val < mv1) {
+            mv1 = val;
+            a1 = k;
+        }
+    }
+    val = 0;
+    for (int k = 0; k <= lim; ++k) {
+        for (uint i = 0; i < nr - k; ++i) {
+            for (uint j = 0; j < nc; ++j) {
+            tie(r1,r1,r1) = img1(i + k,j);
+            tie(r2,r2,r2) = img2(i,j);
+            val += (r1 - r2) * (r1 - r2);
+            }
+        }
+        if (k == 0) mv2 = val;
+        if (val < mv2) {
+            mv2 = val;
+            a2 = -k;
+        }
+    }
+    if (mv1 < mv2) {
+        ans = a1;
+    } else {
+        ans = a2;
+    }
+    return ans;
+}
+
+//Cross-correlation
+int cross(Image img1, Image img2, int lim = 15)
+{
+    int ans, a1 = 0, a2 = 0;
+    uint nr = img1.n_rows, nc = img1.n_cols, val = 0, mv1 = 0, mv2 = 0, r1,r2;
+    for (int k = 0; k <= lim; ++k) {
+        for (uint i = 0; i < nr - k; ++i) {
+            for (uint j = 0; j < nc; ++j) {
+            tie(r1,r1,r1) = img1(i,j);
+            tie(r2,r2,r2) = img2(i + k,j);
+            val += r1 * r2;
+            }
+        }
+        if (k == 0) mv1 = val;
+        if (val > mv1) {
+            mv1 = val;
+            a1 = k;
+        }
+    }
+    val = 0;
+    for (int k = 0; k <= lim; ++k) {
+        for (uint i = 0; i < nr - k; ++i) {
+            for (uint j = 0; j < nc; ++j) {
+            tie(r1,r1,r1) = img1(i + k,j);
+            tie(r2,r2,r2) = img2(i,j);
+            val += r1 * r2;
+            }
+        }
+        if (k == 0) mv2 = val;
+        if (val > mv2) {
+            mv2 = val;
+            a2 = -k;
+        }
+    }
+    if (mv1 > mv2) {
+        ans = a1;
+    } else {
+        ans = a2;
+    }
+    return ans;
+}
+
+Image align(const Image &src_image, string postprocessing = "", double fraction = 0, bool save = true)
+{
+    Image ubimg = canny(src_image,100,300);
+    uint nr = ubimg.n_rows - ubimg.n_rows % 3, nc = ubimg.n_cols;
+    cout<<nr<<" "<<nr / 3 * 2<<" "<<endl;
+    Image imgr(nr / 3,nc), imgg(nr / 3,nc), imgb(nr / 3,nc);
+
+    //separating source image to RGB chanels
+    for (uint i = 0; i < nr / 3; ++i){
+        for (uint j = 0; j < nc; ++j) {
+            imgb(i,j) = ubimg(i,j);
+        }
+    }
+    for (uint i = nr / 3; i < nr / 3 * 2; ++i){
+        for (uint j = 0; j < nc; ++j) {
+            imgg(i - nr / 3,j) = ubimg(i,j);
+        }
+    }
+    for (uint i = nr / 3 * 2; i < nr; ++i){
+        for (uint j = 0; j < nc; ++j) {
+            imgr(i - nr / 3 * 2,j) = ubimg(i,j);
+        }
+    }
+
+    /*for (uint i = nr - 1; i >= nr / 3 * 2; --i){
+        cout<<nr<<" "<<nr / 3 * 2<<" "<<i<<endl;
+        for (uint j = 0; j < nc; ++j) {
+            imgr(i - nr / 3 * 2,j) = ubimg(i,j);
+        }
+    }*/
+    //int gb = mse(imgg,imgb), gr = mse(imgg,imgr);
+    int gb = cross(imgg,imgb), gr = cross(imgg,imgr);
+    uint r, g, b;// av = (abs(gb) + abs(gr)) / 2;
+    //cout<<gb<<" "<<gr<<endl;
+    //av = abs(gb);
+    Image img(nr / 3, nc);
+
+    for (uint i = 0; i < nr / 3; ++i) {
+        for (uint j = 0; j < nc; ++j) {
+            tie(g,g,g) = imgg(i,j);
+            img(i,j) = make_tuple(0,g,0);
+        }
+    }
+
+    if (gb >= 0) {
+        for (uint i = gb; i < nr / 3; ++i) {
+            for (uint j = 0; j < nc; ++j) {
+                tie(r,g,b) = img(i,j);
+                tie(b,b,b) = imgb(i,j);
+                img(i,j) = make_tuple(0,g,b);
+            }
+        }
+    } else {
+        for (uint i = 0; i < nr / 3 - abs(gb); ++i) {
+            for (uint j = 0; j < nc; ++j) {
+                tie(r,g,b) = img(i,j);
+                tie(b,b,b) = imgb(i - gb,j);
+                img(i,j) = make_tuple(0,g,b);
+            }
+        }
+    }
+
+    if (gb >= 0) {
+        for (uint i = abs(gr); i < nr / 3; ++i) {
+            for (uint j = 0; j < nc; ++j) {
+                tie(r,g,b) = img(i,j);
+                tie(r,r,r) = imgr(i,j);
+                img(i,j) = make_tuple(r,g,b);
+            }
+        }
+    } else {
+        for (uint i = 0; i < nr / 3 - abs(gr); ++i) {
+            for (uint j = 0; j < nc; ++j) {
+                tie(r,g,b) = img(i,j);
+                tie(r,r,r) = imgb(i - gb,j);
+                img(i,j) = make_tuple(r,g,b);
+            }
+        }
+    }
+
+    /*for (uint i = 0; i < nr / 3; ++i) {
+        for (uint j = 0; j < nc; ++j) {
+            if (gb >= 0) {
+            tie(g,g,g) = imgg(i,j);
+            tie(b,b,b) = imgb(i + gb,j);
+            } else {
+            tie(g,g,g) = imgg(i,j);
+            tie(b,b,b) = imgb(i - gb,j);
+            }
+            if (gr >= 0) {
+            tie(g,g,g) = imgg(i,j);
+            tie(r,r,r) = imgr(i + gr,j);
+            } else {
+            tie(g,g,g) = imgg(i + -gr,j);
+            tie(r,r,r) = imgr(i,j);
+            }
+            img(i,j) = make_tuple(r,g,b);
+        }
+    }*/
+    /*switch (postprocessing) {
         case "--gray-world":
             return gray_world(src_image);
         case "--unsharp"
@@ -358,81 +812,10 @@ Image unsharp(const Image &src_image, bool save = true)
         case "--autocontrast"
             return ;
         default: return src_image;
-    }
-}*/
-
-Image canny(const Image &m, int th1, int th2)
-{
-    Matrix<double> sobelx = {{-1, 0, 1},
-                            {-2, 0, 2},
-                            {-1, 0, 1}};
-    Matrix<double> sobely = {{1, 2, 1},
-                            {0, 0, 0},
-                            {-1, -2, -1}};
-    Image imgx = m.unary_map(Custom<double>(sobelx)),
-        imgy = m.unary_map(Custom<double>(sobely));
-    Matrix<int> grad(m.n_rows, m.n_cols), bordmap(m.n_rows, m.n_cols);
-    Matrix<double> theta(m.n_rows, m.n_cols);
-    unsigned int rx, ry;
-
-    for (uint i = 0; i < m.n_rows; ++i) {
-        for (uint j = 0; j < m.n_cols; ++j) {
-            tie(rx,rx,rx) = imgx(i,j); tie(ry,ry,ry) = imgy(i,j);
-            grad(i,j) = sqrt(rx*rx+ry*ry);
-            theta(i,j) = atan2(rx, ry);
-        }
-    }
-    for (uint i = 0; i < m.n_rows; ++i) {
-        for (uint j = 0; j < m.n_cols; ++j) {
-            switch (radtoplace(theta(i,j))) {
-                case 1:
-                    if ((grad(i,j) <=  grad(i,j + 1)) || (grad(i,j) <= grad(i,j - 1)) || (grad(i,j) < th1))
-                        grad(i,j) = 0;
-                    if (grad(i,j) > th2)
-                        bordmap(i,j) = 1;
-                case 2:
-                    if ((grad(i,j) <=  grad(i + 1,j + 1)) || (grad(i,j) <= grad(i - 1,j - 1)) || (grad(i,j) < th1))
-                        grad(i,j) = 0;
-                    if (grad(i,j) > th2)
-                        bordmap(i,j) = 1;
-                case 3:
-                    if ((grad(i,j) <=  grad(i + 1,j)) || (grad(i,j) <= grad(i - 1,j)) || (grad(i,j) < th1))
-                        grad(i,j) = 0;
-                    if (grad(i,j) > th2)
-                        bordmap(i,j) = 1;
-                case 4:
-                    if ((grad(i,j) <=  grad(i + 1,j + 1)) || (grad(i,j) <= grad(i - 1,j - 1)) || (grad(i,j) < th1))
-                        grad(i,j) = 0;
-                    if (grad(i,j) > th2)
-                        bordmap(i,j) = 1;
-                case 5:
-                    if ((grad(i,j) <=  grad(i,j - 1)) || (grad(i,j) <= grad(i,j + 1)) || (grad(i,j) < th1))
-                        grad(i,j) = 0;
-                    if (grad(i,j) > th2)
-                        bordmap(i,j) = 1;
-                case 6:
-                    if ((grad(i,j) <=  grad(i - 1,j - 1)) || (grad(i,j) <= grad(i + 1,j + 1)) || (grad(i,j) < th1))
-                        grad(i,j) = 0;
-                    if (grad(i,j) > th2)
-                        bordmap(i,j) = 1;
-                case 7:
-                    if ((grad(i,j) <=  grad(i - 1,j)) || (grad(i,j) <= grad(i + 1,j)) || (grad(i,j) < th1))
-                        grad(i,j) = 0;
-                    if (grad(i,j) > th2)
-                        bordmap(i,j) = 1;
-                case 8:
-                    if ((grad(i,j) <=  grad(i - 1,j + 1)) || (grad(i,j) <= grad(i + 1,j - 1)) || (grad(i,j) < th1))
-                        grad(i,j) = 0;
-                    if (grad(i,j) > th2)
-                        bordmap(i,j) = 1;
-                default: ;
-            }
-        }
-    }
-
-
-    return m;
+    }*/
+    return imgr;
 }
+
 
 int main(int argc, char **argv)
 {
@@ -516,19 +899,19 @@ int main(int argc, char **argv)
                 if (postprocessing == "--gray-world" ||
                     postprocessing == "--unsharp") {
                     check_argc(argc, 5, 5);
-                    //dst_image = align(src_image, postprocessing);
+                    dst_image = align(src_image, postprocessing);
                 } else if (postprocessing == "--autocontrast") {
                     double fraction = 0.0;
                     if (argc == 6) {
                         fraction = read_value<double>(argv[5]);
                         check_number("fraction", fraction, 0.0, 0.4);
                     }
-                    // dst_image = align(src_image, postprocessing, fraction);
+                    dst_image = align(src_image, postprocessing, fraction);
                 } else {
                     throw string("unknown align option ") + postprocessing;
                 }
             } else {
-                // dst_image = align(src_image);
+                dst_image = align(src_image);
             }
         } else {
             throw string("unknown action ") + action;
