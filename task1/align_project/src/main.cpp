@@ -509,7 +509,7 @@ Image canny(const Image &src_image, int th1, int th2)
     }
     for (uint i = 0; i < nr; ++i) {
         for (uint j = 0; j < nc; ++j) {
-            if(bordmap(i,j) == -1)
+            if(bordmap(i,j) != 1)
                 bordmap(i,j) = 0;
         }
     }
@@ -521,96 +521,109 @@ Image canny(const Image &src_image, int th1, int th2)
     }*/
 
     //cutting borders
-    uint sum = 0, mx = 0, curpos = 0;
+    uint sum = 0, mx = 0, pos1 = 0, pos2 = 0, k = 3;
     for (uint i = 0; i < nr / 100 * 5; ++i) {
         for (uint j = 0; j < nc; ++j) {
             sum += bordmap(i,j);
         }
         if (sum > mx) {
             mx = sum;
-            curpos = i + 2;
+            pos1 = i;
+            //cout<<"top1"<<endl;
         }
+        sum = 0;
     }
     sum = mx = 0;
-    for (uint i = curpos; i < nr / 100 * 5; ++i) {
+    for (uint i = 0; i < nr / 100 * 5; ++i) {
         for (uint j = 0; j < nc; ++j) {
             sum += bordmap(i,j);
         }
-        if (sum > mx) {
+        if ((i > pos1 + k) && (sum > mx)) {
             mx = sum;
-            curpos = i;
+            pos2 = i;
+            //cout<<"top2"<<endl;
         }
+        sum = 0;
     }
-    top = curpos;
+    top = max(pos1,pos2);
 
     sum = mx = 0;
-    curpos = 0;
-    for (uint j = nc; j < nc / 100 * 5; ++j) {
+    pos1 = pos2 = 0;
+    for (uint j = 0; j < nc / 100 * 5; ++j) {
         for (uint i = 0; i < nr; ++i) {
             sum += bordmap(i,j);
         }
         if (sum > mx) {
             mx = sum;
-            curpos = j + 2;
+            pos1 = j;
         }
+        sum = 0;
     }
     sum = mx = 0;
-    for (uint j = curpos; j < nc / 100 * 5; ++j) {
+    for (uint j = 0; j < nc / 100 * 5; ++j) {
         for (uint i = 0; i < nr; ++i) {
             sum += bordmap(i,j);
         }
-        if (sum > mx) {
+        if ((j > pos1 + k) && (sum > mx)) {
             mx = sum;
-            curpos = j;
+            pos2 = j;
         }
+        sum = 0;
     }
-    left = curpos;
+    left = max(pos1,pos2);
+    //cout<<pos1<<" "<<pos2<<endl;
 
     sum = mx = 0;
-    curpos = nr - 1;
+    pos1 = pos2 = nr - 1;
     for (uint i = nr - 1; i >= nr / 100 * 95; --i) {
         for (uint j = 0; j < nc; ++j) {
             sum += bordmap(i,j);
         }
         if (sum > mx) {
             mx = sum;
-            curpos = i + 2;
+            pos1 = i;
         }
+        sum = 0;
     }
     sum = mx = 0;
-    for (uint i = curpos; i >= nr / 100 * 95; --i) {
+    for (uint i = nr - 1; i >= nr / 100 * 95; --i) {
         for (uint j = 0; j < nc; ++j) {
             sum += bordmap(i,j);
         }
-        if (sum > mx) {
+        if ((i < pos1 - k) && (sum > mx)) {
             mx = sum;
-            curpos = i;
+            pos2 = i;
         }
+        sum = 0;
     }
-    bottom = curpos;
+    bottom = min(pos1,pos2);
 
     sum = mx = 0;
-    curpos = nc - 1;
+    pos1 = pos2 = nc - 1;
     for (uint j = nc - 1; j >= nc / 100 * 95; --j) {
         for (uint i = 0; i < nr; ++i) {
             sum += bordmap(i,j);
         }
         if (sum > mx) {
             mx = sum;
-            curpos = j + 2;
+            pos1 = j;
         }
+        sum = 0;
     }
     sum = mx = 0;
-    for (uint j = curpos; j > nc / 100 * 95; --j) {
+    for (uint j = nc - 1; j >= nc / 100 * 95; --j) {
         for (uint i = 0; i < nr; ++i) {
             sum += bordmap(i,j);
         }
-        if (sum > mx) {
+        if ((j < pos1 - k) && (sum > mx)) {
             mx = sum;
-            curpos = j;
+            pos2 = j;
         }
+        sum = 0;
     }
-    right = curpos;
+    right = min(pos1,pos2);
+
+    //cout<<top<<" "<<left<<" "<<bottom<<" "<<right<<" "<<endl;
 
     //making cutted image
     Image img(bottom - top, right - left);
@@ -639,8 +652,8 @@ int mse(Image img1, Image img2, int lim = 15)
             mv1 = val;
             a1 = k;
         }
+        val = 0;
     }
-    val = 0;
     for (int k = 0; k <= lim; ++k) {
         for (uint i = 0; i < nr - k; ++i) {
             for (uint j = 0; j < nc; ++j) {
@@ -654,6 +667,7 @@ int mse(Image img1, Image img2, int lim = 15)
             mv2 = val;
             a2 = -k;
         }
+        val = 0;
     }
     if (mv1 < mv2) {
         ans = a1;
@@ -681,8 +695,8 @@ int cross(Image img1, Image img2, int lim = 15)
             mv1 = val;
             a1 = k;
         }
+        val = 0;
     }
-    val = 0;
     for (int k = 0; k <= lim; ++k) {
         for (uint i = 0; i < nr - k; ++i) {
             for (uint j = 0; j < nc; ++j) {
@@ -696,6 +710,7 @@ int cross(Image img1, Image img2, int lim = 15)
             mv2 = val;
             a2 = -k;
         }
+        val = 0;
     }
     if (mv1 > mv2) {
         ans = a1;
@@ -709,7 +724,7 @@ Image align(const Image &src_image, string postprocessing = "", double fraction 
 {
     Image ubimg = canny(src_image,100,300);
     uint nr = ubimg.n_rows - ubimg.n_rows % 3, nc = ubimg.n_cols;
-    cout<<nr<<" "<<nr / 3 * 2<<" "<<endl;
+    //cout<<nr<<" "<<nr / 3 * 2<<" "<<endl;
     Image imgr(nr / 3,nc), imgg(nr / 3,nc), imgb(nr / 3,nc);
 
     //separating source image to RGB chanels
@@ -722,11 +737,14 @@ Image align(const Image &src_image, string postprocessing = "", double fraction 
         for (uint j = 0; j < nc; ++j) {
             imgg(i - nr / 3,j) = ubimg(i,j);
         }
+        //cout<<i<<endl;
     }
+    //cout<<"Red begins"<<endl;
     for (uint i = nr / 3 * 2; i < nr; ++i){
         for (uint j = 0; j < nc; ++j) {
             imgr(i - nr / 3 * 2,j) = ubimg(i,j);
         }
+        //cout<<i<<endl;
     }
 
     /*for (uint i = nr - 1; i >= nr / 3 * 2; --i){
@@ -737,8 +755,9 @@ Image align(const Image &src_image, string postprocessing = "", double fraction 
     }*/
     //int gb = mse(imgg,imgb), gr = mse(imgg,imgr);
     int gb = cross(imgg,imgb), gr = cross(imgg,imgr);
+    //int gb = 8, gr = -5;
     uint r, g, b;// av = (abs(gb) + abs(gr)) / 2;
-    //cout<<gb<<" "<<gr<<endl;
+    cout<<gb<<" "<<gr<<endl;
     //av = abs(gb);
     Image img(nr / 3, nc);
 
@@ -753,7 +772,7 @@ Image align(const Image &src_image, string postprocessing = "", double fraction 
         for (uint i = gb; i < nr / 3; ++i) {
             for (uint j = 0; j < nc; ++j) {
                 tie(r,g,b) = img(i,j);
-                tie(b,b,b) = imgb(i,j);
+                tie(b,b,b) = imgb(i - gb,j);
                 img(i,j) = make_tuple(0,g,b);
             }
         }
@@ -767,11 +786,11 @@ Image align(const Image &src_image, string postprocessing = "", double fraction 
         }
     }
 
-    if (gb >= 0) {
-        for (uint i = abs(gr); i < nr / 3; ++i) {
+    if (gr >= 0) {
+        for (uint i = gr; i < nr / 3; ++i) {
             for (uint j = 0; j < nc; ++j) {
                 tie(r,g,b) = img(i,j);
-                tie(r,r,r) = imgr(i,j);
+                tie(r,r,r) = imgr(i - gr,j);
                 img(i,j) = make_tuple(r,g,b);
             }
         }
@@ -779,7 +798,7 @@ Image align(const Image &src_image, string postprocessing = "", double fraction 
         for (uint i = 0; i < nr / 3 - abs(gr); ++i) {
             for (uint j = 0; j < nc; ++j) {
                 tie(r,g,b) = img(i,j);
-                tie(r,r,r) = imgb(i - gb,j);
+                tie(r,r,r) = imgr(i - gr,j);
                 img(i,j) = make_tuple(r,g,b);
             }
         }
@@ -813,7 +832,7 @@ Image align(const Image &src_image, string postprocessing = "", double fraction 
             return ;
         default: return src_image;
     }*/
-    return imgr;
+    return img;
 }
 
 
