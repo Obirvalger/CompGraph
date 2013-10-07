@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <string>
 #include <sstream>
 #include <iostream>
@@ -122,10 +123,55 @@ void check_argc(int argc, int from, int to=numeric_limits<int>::max())
         throw string("too many arguments for operation");
 }
 
-Matrix<int> parse_kernel(string kernel)
+Matrix<double> parse_kernel(string str)
 {
     // Kernel parsing implementation here
-    return Matrix<int>(0, 0);
+    //Matrix<double> kernel;
+    /*char *cs = str.c_str();
+    char c = cs[0];
+    uint nr = 0; nc = 0; cur = 0, i = 0, j = 0;
+    if (str.find_first_not_of("+-0123467895.,;e") == string::npos)
+        throw "bad kernel";
+    while(uint i != str.size()) {
+        while((uint j != str.size()) && (str[j] != ';')) {
+
+        }
+    }
+    while(c != '\0') {
+        while ((c != ',') && (c != ';')) {
+            c = cs[++i];
+        }
+        if (c == ',') cur++;
+            if (c == ';') {
+                nr++;
+                if (nr == 1)
+                    nc = cur;
+                if (nc != cur)
+                    throw "bad kernel";
+                cur = 0;
+            }
+        c = cs[++i];
+    }
+    Matrix<double> kernel(nr,nc);
+    while(c != '\0') {
+        while ((c != ',') && (c != ';')) {
+            c = cs[++i];
+            kernel(i,j) = atof(&cs[cur]);
+        }
+        if (c == ',') cur +=;
+            if (c == ';') {
+                j++;
+                if (nr == 1)
+                    nc = cur;
+                if (nc != cur)
+                    throw "bad kernel";
+                cur = 0;
+            }
+        c = cs[++i];
+    }*/
+    //string s = "2,3,5.4;6,7,2";
+    //scout<<atof(cs)<<" "<<cs<<endl;
+    return Matrix<double>(0, 0);
 }
 
 /*class Gauss
@@ -160,11 +206,55 @@ public:
     int radius;
 };*/
 
+//Makes image bigger for better filtering
+Image bigimg(const Image &m, uint r)
+{
+    //uint r = 2 * radius + 1;
+    uint nr = m.n_rows, nc = m.n_cols, d = 2 * r;
+    Image img(nr + d, nc + d);
+    for (uint i = 0; i < nr; ++i) {
+        for (uint j = 0; j < nc; ++j) {
+            img(i + r,j + r) = m(i,j);
+        }
+    }
+    for (uint i = 0; i < r; ++i) {
+        for (uint j = r; j < nc + r; ++j) {
+            img(r - 1 - i,j) = m(i,j - r);
+            img(nr + r + i,j) = m(nr - 1 - i,j - r);
+            //cout<<i<<" "<<j<<" "<<nr<<" "<<nc<<endl;
+        }
+        //cout<<i<<endl;
+    }
+    //cout<<"sefse"<<endl;
+    for (uint i = 0; i < nr + d; ++i) {
+        for (uint j = 0; j < r; ++j) {
+            img(i,r - 1 - j) = img(i,j + r);
+            img(i,nc + r + j) = img(i,nc + r - 1 - j);
+        }
+    }
+    //cout<<"sefse"<<endl;
+    return img;
+}
+
+Image smallimg(const Image &m, uint r)
+{
+    //uint r = 2 * radius + 1;
+    uint d = 2 * r, nr = m.n_rows - d, nc = m.n_cols - d;
+    Image img(nr, nc);
+    for (uint i = 0; i < nr; ++i) {
+        for (uint j = 0; j < nc; ++j) {
+            img(i,j) = m(i + r + 1,j + r + 1);
+        }
+    }
+    //cout<<"sefse"<<endl;
+    return img;
+}
+
 template<typename T>
 class Custom
 {
 public:
-    Custom(Matrix<T> &kernel, bool saveimg = true) : ker(kernel), radius((ker.n_cols - 1) / 2), save(saveimg) {}
+    Custom(Matrix<T> &kernel, bool saveimg = true) : ker(kernel), radius((ker.n_rows - 1) / 2), save(saveimg) {}
     tuple<uint, uint, uint> operator () (const Image &m) const
     {
         /*Matrix<int> ker = {{-1, 0, 1},
@@ -201,6 +291,11 @@ public:
     int radius;
     bool save;
 };
+
+Image custom(const Image &src_image, Matrix<double> kernel, bool save = true)
+{
+    return src_image.unary_map(Custom<double>(kernel, save));
+}
 
 class Separ_x
 {
@@ -266,7 +361,11 @@ Image gaussian(const Image &src_image, double sigma = 1.4, uint radius = 1)
             kernel(i,j) /= div;
         }
     }
+    //cout<<radius<<" "<<(kernel.n_cols - 1) / 2<<endl;
     return src_image.unary_map(Custom<double>(kernel));
+    //return smallimg(bigimg(src_image,radius).unary_map(Gauss(1.4, radius)), radius);
+    //return smallimg(custom(bigimg(src_image,radius),kernel,radius), radius);
+    //return smallimg(bigimg(src_image,radius), radius);1
 }
 
 Image gaussian_separable(const Image &src_image, double sigma = 1.4, uint radius = 1)
@@ -349,6 +448,41 @@ Image unsharp(const Image &src_image, bool save = true)
                             {-2/3, 13/3, -2/3},
                             {-1/6, -2/3, -1/6}};
     return src_image.unary_map(Custom<double>(kernel, save));
+}
+
+Image autocontrast(const Image &src_image, double fraction)
+{
+    uint nr = src_image.n_rows, nc = src_image.n_cols, r, g, b;
+    double y, ymin = 0, ymax = 0;
+    Image img(nr,nc);
+    vector<int> gist(256);
+    for (uint i = 0; i < nr; ++i) {
+        for (uint j = 0; j < nc; ++j) {
+            tie(r,g,b) = src_image(i,j);
+            y = 0.2125 * r + 0.7154 * g + 0.0721 * b;
+            gist[static_cast<uint>(y)]++;
+        }
+    }
+    for (uint i = 255 * fraction; i < 255 - 255 * fraction; ++i) {
+        y = gist[i];
+        if (i == 1) {
+            ymin = gist[i];
+            ymax = gist[i];
+        }
+        if (y < ymin) ymin = y;
+        if (y > ymax) ymax = y;
+    }
+    for (uint i = 0; i < nr; ++i) {
+        for (uint j = 0; j < nc; ++j) {
+            tie(r,g,b) = src_image(i,j);
+            y = gist[i];
+            r *= (y - ymin) * 255 / (ymax - ymin) / y;
+            g *= (y - ymin) * 255 / (ymax - ymin) / y;
+            b *= (y - ymin) * 255 / (ymax - ymin) / y;
+            img(i,j) = make_tuple(r,g,b);
+        }
+    }
+    return img;
 }
 
 Image canny(const Image &src_image, int th1, int th2)
@@ -514,14 +648,14 @@ Image canny(const Image &src_image, int th1, int th2)
         }
     }
 
-    /*for (uint i = 0; i < nr; ++i) {
+    for (uint i = 0; i < nr; ++i) {
         for (uint j = 0; j < nc; ++j) {
             imgx(i,j) = make_tuple(bordmap(i,j) * 255, bordmap(i,j) * 255, bordmap(i,j) * 255);
         }
-    }*/
+    }
 
     //cutting borders
-    uint sum = 0, mx = 0, pos1 = 0, pos2 = 0, k = 3;
+    uint sum = 0, mx = 0, pos1 = 0, pos2 = 0, k = 2;
     for (uint i = 0; i < nr / 100 * 5; ++i) {
         for (uint j = 0; j < nc; ++j) {
             sum += bordmap(i,j);
@@ -548,8 +682,8 @@ Image canny(const Image &src_image, int th1, int th2)
     top = max(pos1,pos2);
 
     sum = mx = 0;
-    pos1 = pos2 = 0;
-    for (uint j = 0; j < nc / 100 * 5; ++j) {
+    pos1 = pos2 = 2;
+    for (uint j = 2; j < nc / 100 * 5; ++j) {
         for (uint i = 0; i < nr; ++i) {
             sum += bordmap(i,j);
         }
@@ -560,7 +694,7 @@ Image canny(const Image &src_image, int th1, int th2)
         sum = 0;
     }
     sum = mx = 0;
-    for (uint j = 0; j < nc / 100 * 5; ++j) {
+    for (uint j = 2; j < nc / 100 * 5; ++j) {
         for (uint i = 0; i < nr; ++i) {
             sum += bordmap(i,j);
         }
@@ -599,8 +733,8 @@ Image canny(const Image &src_image, int th1, int th2)
     bottom = min(pos1,pos2);
 
     sum = mx = 0;
-    pos1 = pos2 = nc - 1;
-    for (uint j = nc - 1; j >= nc / 100 * 95; --j) {
+    pos1 = pos2 = nc - 3;
+    for (uint j = nc - 3; j >= nc / 100 * 95; --j) {
         for (uint i = 0; i < nr; ++i) {
             sum += bordmap(i,j);
         }
@@ -611,7 +745,7 @@ Image canny(const Image &src_image, int th1, int th2)
         sum = 0;
     }
     sum = mx = 0;
-    for (uint j = nc - 1; j >= nc / 100 * 95; --j) {
+    for (uint j = nc - 3; j >= nc / 100 * 95; --j) {
         for (uint i = 0; i < nr; ++i) {
             sum += bordmap(i,j);
         }
@@ -647,10 +781,11 @@ int mse(Image img1, Image img2, int lim = 15)
             val += (r1 - r2) * (r1 - r2);
             }
         }
+        val /= nr * nc;
         if (k == 0) mv1 = val;
         if (val < mv1) {
             mv1 = val;
-            a1 = k;
+            a1 = -k;
         }
         val = 0;
     }
@@ -662,10 +797,11 @@ int mse(Image img1, Image img2, int lim = 15)
             val += (r1 - r2) * (r1 - r2);
             }
         }
+        val /= nr * nc;
         if (k == 0) mv2 = val;
         if (val < mv2) {
             mv2 = val;
-            a2 = -k;
+            a2 = k;
         }
         val = 0;
     }
@@ -693,7 +829,7 @@ int cross(Image img1, Image img2, int lim = 15)
         if (k == 0) mv1 = val;
         if (val > mv1) {
             mv1 = val;
-            a1 = k;
+            a1 = -k;
         }
         val = 0;
     }
@@ -708,7 +844,7 @@ int cross(Image img1, Image img2, int lim = 15)
         if (k == 0) mv2 = val;
         if (val > mv2) {
             mv2 = val;
-            a2 = -k;
+            a2 = k;
         }
         val = 0;
     }
@@ -753,11 +889,12 @@ Image align(const Image &src_image, string postprocessing = "", double fraction 
             imgr(i - nr / 3 * 2,j) = ubimg(i,j);
         }
     }*/
-    //int gb = mse(imgg,imgb), gr = mse(imgg,imgr);
-    int gb = cross(imgg,imgb), gr = cross(imgg,imgr);
-    //int gb = 8, gr = -5;
+    int gb = mse(imgg,imgb, 30), gr = mse(imgg,imgr,30);
+    //int gb = cross(imgg,imgb), gr = cross(imgg,imgr);
+    //int gb = 8, gr = -6;
+        //int gb = -mse(imgg,imgb), gr = -mse(imgg,imgr);
     uint r, g, b;// av = (abs(gb) + abs(gr)) / 2;
-    cout<<gb<<" "<<gr<<endl;
+    //cout<<gb<<" "<<gr<<endl;
     //av = abs(gb);
     Image img(nr / 3, nc);
 
@@ -823,6 +960,12 @@ Image align(const Image &src_image, string postprocessing = "", double fraction 
             img(i,j) = make_tuple(r,g,b);
         }
     }*/
+    if (postprocessing == "--gray-world")
+        return gray_world(img);
+    if (postprocessing == "--unsharp")
+        return unsharp(img);
+    if (postprocessing == "--autocontrast")
+        return autocontrast(img,fraction);
     /*switch (postprocessing) {
         case "--gray-world":
             return gray_world(src_image);
@@ -868,7 +1011,7 @@ int main(int argc, char **argv)
             // dst_image = resize(src_image, scale);
         }  else if (action == "--custom") {
             check_argc(argc, 5, 5);
-            // Matrix<double> kernel = parse_kernel(argv[4]);
+            Matrix<double> kernel = parse_kernel(argv[4]);
             // Function custom is useful for making concrete linear filtrations
             // like gaussian or sobel. So, we assume that you implement custom
             // and then implement concrete filtrations using this function.
