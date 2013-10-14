@@ -72,6 +72,15 @@ R"(where PARAMS are from list:
     cout << usage;
 }
 
+
+bool pw(int x, int y)
+{
+    for(uint i = y; i > 0; --i) {
+        x *= x;
+    }
+    return x;
+}
+
 /*approximately equal function*/
 bool aeq(double x, double y, double eps = 1e-5)
 {
@@ -126,52 +135,124 @@ void check_argc(int argc, int from, int to=numeric_limits<int>::max())
 Matrix<double> parse_kernel(string str)
 {
     // Kernel parsing implementation here
-    //Matrix<double> kernel;
-    /*char *cs = str.c_str();
+    const char *cs = str.c_str();
     char c = cs[0];
-    uint nr = 0; nc = 0; cur = 0, i = 0, j = 0;
-    if (str.find_first_not_of("+-0123467895.,;e") == string::npos)
-        throw "bad kernel";
-    while(uint i != str.size()) {
-        while((uint j != str.size()) && (str[j] != ';')) {
+    uint nr = 0, nc = 0, cur = 0, i = 0, j = 0;
+    if (str.find_first_not_of("+-0123467895.,Ie") != string::npos)
+        { cout << "lol"; throw "bad kernel";}
 
-        }
-    }
-    while(c != '\0') {
-        while ((c != ',') && (c != ';')) {
+    while(c != '\0')
+         {
+        while ((c != ',') && (c != 'I')) {
             c = cs[++i];
         }
+
         if (c == ',') cur++;
-            if (c == ';') {
+            if (c == 'I') {
                 nr++;
                 if (nr == 1)
                     nc = cur;
                 if (nc != cur)
-                    throw "bad kernel";
+        { cout << "lol too\n"; throw "bad kernel";}
                 cur = 0;
             }
         c = cs[++i];
     }
+    nc++;
+    cout<<nr<<" "<<nc<<" "/*<<int(cs[str.length()])*/<<"gsr"<<endl;
     Matrix<double> kernel(nr,nc);
+    bool f = false;
+    c = cs[i = cur = j = 0];
     while(c != '\0') {
-        while ((c != ',') && (c != ';')) {
-            c = cs[++i];
-            kernel(i,j) = atof(&cs[cur]);
-        }
-        if (c == ',') cur +=;
-            if (c == ';') {
-                j++;
-                if (nr == 1)
-                    nc = cur;
-                if (nc != cur)
-                    throw "bad kernel";
-                cur = 0;
+        f = false;
+        while ((c != ',') && (c != 'I')) {
+            cout << c << " ";
+            if (!f) {
+                kernel(j,cur) = atof(&cs[i]);
+                f = true;
             }
+            c = cs[++i];
+            //kernel(i,j) = atof(&cs[cur]);
+        }
+        if (c == ',') {
+           // kernel(cur,j) = atof(&cs[i + 1])
+            f = false;
+            cur++;
+        }
+        if (c == 'I') {
+            j++;
+            cur = 0;
+        }
         c = cs[++i];
-    }*/
+    }
+    cout<<endl<<endl<<kernel<<endl;
     //string s = "2,3,5.4;6,7,2";
-    //scout<<atof(cs)<<" "<<cs<<endl;
-    return Matrix<double>(0, 0);
+    //scout<<atof(cs)<<" "<<cs<<endl;*/
+
+    return kernel;
+}
+
+Image resample(const Image &a, int k)
+{
+    int oldh = a.n_rows, oldw = a.n_cols, neww, newh;
+    if (k > 0) {
+        neww = oldw / k;
+        newh = oldh / k;
+    } else {
+        neww = oldw * abs(k);
+        newh = oldh * abs(k);
+    }
+    Image img(newh,neww);
+    int i, j;
+    int h, w;
+    float t;
+    float u;
+    float tmp;
+    float d1, d2, d3, d4;
+    uint r1, r2, r3, r4, g1, g2, g3, g4, b1, b2, b3, b4, r, g, b;
+
+    for (j = 0; j < newh; j++) {
+        tmp = static_cast<float>(j) / static_cast<float>(newh - 1) * (oldh - 1);
+        h = floor(tmp);
+        if (h < 0) {
+            h = 0;
+        } else {
+            if (h >= oldh - 1) {
+                h = oldh - 2;
+            }
+        }
+        u = tmp - h;
+
+        for (i = 0; i < neww; i++) {
+
+            tmp = static_cast<float>(i) / static_cast<float>(neww - 1) * (oldw - 1);
+            w = floor(tmp);
+            if (w < 0) {
+                w = 0;
+            } else {
+                if (w >= oldw - 1) {
+                    w = oldw - 2;
+                }
+            }
+            t = tmp - w;
+            d1 = (1 - t) * (1 - u);
+            d2 = t * (1 - u);
+            d3 = t * u;
+            d4 = (1 - t) * u;
+            tie(r1,g1,b1) = a(h,w);
+            tie(r2,g2,b2) = a(h,w + 1);
+            tie(r3,g3,b3) = a(h + 1,w + 1);
+            tie(r4,g4,b4) = a(h + 1,w);
+            b = b1 * d1 + b2 * d2 + b3 * d3 + b4 * d4;
+            g = g1 * d1 + g2 * d2 + g3 * d3 + g4 * d4;
+            r = r1 * d1 + r2 * d2 + r3 * d3 + r4 *d4;
+            r = min(int(255),int(r));
+            g = min(int(255),int(g));
+            b = min(int(255),int(b));
+            img(j,i) = make_tuple(r,g,b);
+        }
+    }
+    return img;
 }
 
 /*class Gauss
@@ -292,9 +373,9 @@ public:
     bool save;
 };
 
-Image custom(const Image &src_image, Matrix<double> kernel, bool save = true)
+Image custom(const Image &src_image, Matrix<double> kernel)
 {
-    return src_image.unary_map(Custom<double>(kernel, save));
+    return src_image.unary_map(Custom<double>(kernel));
 }
 
 class Separ_x
@@ -860,7 +941,7 @@ Image align(const Image &src_image, string postprocessing = "", double fraction 
 {
     Image ubimg = canny(src_image,100,300);
     uint nr = ubimg.n_rows - ubimg.n_rows % 3, nc = ubimg.n_cols;
-    //cout<<nr<<" "<<nr / 3 * 2<<" "<<endl;
+    cout<<"separating source image to RGB chanels"<<endl;
     Image imgr(nr / 3,nc), imgg(nr / 3,nc), imgb(nr / 3,nc);
 
     //separating source image to RGB chanels
@@ -875,7 +956,7 @@ Image align(const Image &src_image, string postprocessing = "", double fraction 
         }
         //cout<<i<<endl;
     }
-    //cout<<"Red begins"<<endl;
+    cout<<"Red begins"<<endl;
     for (uint i = nr / 3 * 2; i < nr; ++i){
         for (uint j = 0; j < nc; ++j) {
             imgr(i - nr / 3 * 2,j) = ubimg(i,j);
@@ -889,15 +970,29 @@ Image align(const Image &src_image, string postprocessing = "", double fraction 
             imgr(i - nr / 3 * 2,j) = ubimg(i,j);
         }
     }*/
-    int gb = mse(imgg,imgb, 30), gr = mse(imgg,imgr,30);
-    //int gb = cross(imgg,imgb), gr = cross(imgg,imgr);
-    //int gb = 8, gr = -6;
-        //int gb = -mse(imgg,imgb), gr = -mse(imgg,imgr);
-    uint r, g, b;// av = (abs(gb) + abs(gr)) / 2;
-    //cout<<gb<<" "<<gr<<endl;
-    //av = abs(gb);
+    //Image resimg = resample(src_image, 2);
+    //int gb = mse(imgg,imgb, 30), gr = mse(imgg,imgr,30);
+    int gb = 15, gr = 15;
+    uint r, g, b, k = 2, num = 0;
     Image img(nr / 3, nc);
-
+    uint min_side = min(nr,nc);
+    uint l = min_side;
+    while (l > 400 * k) {
+        l /= k;
+        cout<<l<<endl;
+        num++;
+    }
+    //cout<<num<<endl;
+    for (uint i = num; i > 0; --i) {
+        //cout<<gr<<" "<<gb<<endl;
+        gb = k * mse(resample(imgg, pw(k,i)),resample(imgb, pw(k,i)),abs(gb));
+        gr = k * mse(resample(imgg, pw(k,i)),resample(imgr, pw(k,i)),abs(gr));
+        cout<<gr<<" "<<gb<<endl;
+    }
+    //cout<<gr<<" "<<gb<<endl;
+    gr = mse(imgg,imgr,abs(gr));
+    gb = mse(imgg,imgb,abs(gb));
+    cout<<gr<<" "<<gb<<endl;
     for (uint i = 0; i < nr / 3; ++i) {
         for (uint j = 0; j < nc; ++j) {
             tie(g,g,g) = imgg(i,j);
@@ -966,15 +1061,7 @@ Image align(const Image &src_image, string postprocessing = "", double fraction 
         return unsharp(img);
     if (postprocessing == "--autocontrast")
         return autocontrast(img,fraction);
-    /*switch (postprocessing) {
-        case "--gray-world":
-            return gray_world(src_image);
-        case "--unsharp"
-            return unsharp(src_image);
-        case "--autocontrast"
-            return ;
-        default: return src_image;
-    }*/
+    //img = resample(src_image, -8);
     return img;
 }
 
@@ -1022,7 +1109,7 @@ int main(int argc, char **argv)
             //                             {-1, 0, 1}};
             //    return custom(src_image, kernel);
             // }
-            // dst_image = custom(src_image, kernel);
+            dst_image = custom(src_image, kernel);
         } else if (action == "--autocontrast") {
             check_argc(argc, 4, 5);
             double fraction = 0.0;
